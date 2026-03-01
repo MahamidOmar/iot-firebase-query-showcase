@@ -67,7 +67,7 @@ fun RtdbExample1Screen() {
     }
 }
 
-// The actual Firebase Query function
+// Function for Example 1
 fun runViewerQuery(onResult: (String) -> Unit) {
     val database = FirebaseDatabase.getInstance()
     val ref = database.getReference("bySensor/temp1/logs")
