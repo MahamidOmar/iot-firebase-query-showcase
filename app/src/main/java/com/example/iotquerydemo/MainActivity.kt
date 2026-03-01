@@ -66,16 +66,16 @@ fun QueryShowcaseScreen() {
         Spacer(modifier = Modifier.height(16.dp))
 
         // --- EXAMPLE 3 ---
-        Text("Firestore 3: Technician limitation", style = MaterialTheme.typography.titleMedium)
+        Text("Firestore 3: Technician Query (Fixed)", style = MaterialTheme.typography.titleMedium)
         Text("Filters: siteId=S1, category=temperature, temp>=80, + timestamp range", style = MaterialTheme.typography.bodySmall)
-        Text("Expectation: FAILED_PRECONDITION (Missing Composite Index)", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Text("Solution: Composite Index created in Firebase Console", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
         Spacer(modifier = Modifier.height(8.dp))
 
         Button(onClick = {
             resultText = "Running complex Firestore query..."
             runTechnicianQuery { resultText = it }
-        }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
-            Text("Run Example 3 (Intentional Fail)")
+        }) {
+            Text("Run Example 3 (Solution)")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
