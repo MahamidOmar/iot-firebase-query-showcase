@@ -14,6 +14,7 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,7 +26,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    RtdbExamplesScreen()
+                    QueryShowcaseScreen()
                 }
             }
         }
@@ -33,7 +34,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun RtdbExamplesScreen() {
+fun QueryShowcaseScreen() {
     var resultText by remember { mutableStateOf("Ready to test queries") }
 
     Column(
@@ -43,30 +44,38 @@ fun RtdbExamplesScreen() {
             .verticalScroll(rememberScrollState())
     ) {
         // --- EXAMPLE 1 ---
-        Text("RTDB Example 1: Viewer Lookup", style = MaterialTheme.typography.titleMedium)
-        Text("Path: bySensor/temp1/logs", style = MaterialTheme.typography.bodySmall)
+        Text("RTDB 1: Viewer Lookup", style = MaterialTheme.typography.titleMedium)
         Button(onClick = {
             resultText = "Querying Viewer..."
-            runViewerQuery { result -> resultText = result }
-        }) {
-            Text("Run Example 1")
-        }
+            runViewerQuery { resultText = it }
+        }) { Text("Run Example 1") }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Divider()
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // --- EXAMPLE 2 ---
-        Text("RTDB Example 2: Admin Timeline", style = MaterialTheme.typography.titleMedium)
-        Text("Path: byTime/temperature", style = MaterialTheme.typography.bodySmall)
-        Text("Why: Avoids downloading the entire bySensor tree", style = MaterialTheme.typography.bodySmall)
+        Text("RTDB 2: Admin Timeline", style = MaterialTheme.typography.titleMedium)
+        Button(onClick = {
+            resultText = "Querying Admin Timeline..."
+            runAdminTimelineQuery { resultText = it }
+        }) { Text("Run Example 2") }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Divider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- EXAMPLE 3 ---
+        Text("Firestore 3: Technician limitation", style = MaterialTheme.typography.titleMedium)
+        Text("Filters: siteId=S1, category=temperature, temp>=80, + timestamp range", style = MaterialTheme.typography.bodySmall)
+        Text("Expectation: FAILED_PRECONDITION (Missing Composite Index)", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         Spacer(modifier = Modifier.height(8.dp))
 
         Button(onClick = {
-            resultText = "Querying Admin Timeline..."
-            runAdminTimelineQuery { result -> resultText = result }
-        }) {
-            Text("Run Example 2 (The Solution)")
+            resultText = "Running complex Firestore query..."
+            runTechnicianQuery { resultText = it }
+        }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+            Text("Run Example 3 (Intentional Fail)")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -85,68 +94,78 @@ fun RtdbExamplesScreen() {
     }
 }
 
-// Function for Example 1
-fun runViewerQuery(onResult: (String) -> Unit) {
-    val database = FirebaseDatabase.getInstance()
-    val ref = database.getReference("bySensor/temp1/logs")
+// --- QUERY FUNCTIONS ---
 
-    ref.orderByChild("timestamp")
-        .startAt(1708941000000.0)
-        .endAt(1708946000000.0)
+fun runViewerQuery(onResult: (String) -> Unit) {
+    val db = FirebaseDatabase.getInstance().getReference("bySensor/temp1/logs")
+    db.orderByChild("timestamp").startAt(1708941000000.0).endAt(1708946000000.0)
         .addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 if (!snapshot.exists()) return onResult("No data found.")
-                val sb = StringBuilder("Viewer Logs (temp1):\n\n")
-                for (child in snapshot.children) {
-                    sb.append("Log: ${child.key} | Val: ${child.child("value").value}\n")
+                val sb = StringBuilder("Viewer Logs:\n\n")
+                snapshot.children.forEach {
+                    sb.append("Log: ${it.key} | Val: ${it.child("value").value}\n")
                 }
                 onResult(sb.toString())
             }
-            override fun onCancelled(error: DatabaseError) {
-                onResult("Error: ${error.message}")
-            }
+            override fun onCancelled(error: DatabaseError) { onResult("Error: ${error.message}") }
         })
 }
 
-// Function for Example 2 (Admin Timeline Solution)
 fun runAdminTimelineQuery(onResult: (String) -> Unit) {
-    val database = FirebaseDatabase.getInstance()
-    val ref = database.getReference("byTime/temperature")
-
-    // In the byTime tree, the timestamp IS the key, so we use string representations
-    val startTimeStr = "1708941000000"
-    val endTimeStr = "1708946000000"
-
-    ref.orderByKey()
-        .startAt(startTimeStr)
-        .endAt(endTimeStr)
+    val db = FirebaseDatabase.getInstance().getReference("byTime/temperature")
+    db.orderByKey().startAt("1708941000000").endAt("1708946000000")
         .addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                if (!snapshot.exists()) {
-                    onResult("No data found in this range.")
-                    return
-                }
-
-                val sb = StringBuilder()
-                sb.append("Success! Global Timeline Logs:\n\n")
-
-                for (timeNode in snapshot.children) {
-                    val timeKey = timeNode.key
-                    sb.append("Time: $timeKey\n")
-
-                    // Loop through the log IDs under this specific timestamp
-                    for (logNode in timeNode.children) {
-                        val sensorId = logNode.child("sensorId").getValue(String::class.java)
-                        val value = logNode.child("value").getValue(Double::class.java)
-                        sb.append("  -> Sensor: $sensorId | Val: $value\n")
+                if (!snapshot.exists()) return onResult("No data found.")
+                val sb = StringBuilder("Global Timeline:\n\n")
+                snapshot.children.forEach { timeNode ->
+                    sb.append("Time: ${timeNode.key}\n")
+                    timeNode.children.forEach { logNode ->
+                        sb.append("  -> Sensor: ${logNode.child("sensorId").value} | Val: ${logNode.child("value").value}\n")
                     }
-                    sb.append("-------------------\n")
                 }
                 onResult(sb.toString())
             }
-
-            override fun onCancelled(error: DatabaseError) {
-                onResult("Query Failed: ${error.message}")
-            }
+            override fun onCancelled(error: DatabaseError) { onResult("Error: ${error.message}") }
         })
+}
+
+// Function for Example 3 (Technician Composite Index Limitation)
+fun runTechnicianQuery(onResult: (String) -> Unit) {
+    val db = FirebaseFirestore.getInstance()
+
+    // Time range mapping to our dummy documents
+    val startTime = 1708941600000L
+    val endTime = 1708943000000L
+
+    db.collection("sensor_readings")
+        .whereEqualTo("siteId", "S1")
+        .whereEqualTo("category", "temperature")
+        .whereGreaterThanOrEqualTo("temp", 80.0) // Inequality 1
+        .whereGreaterThanOrEqualTo("timestamp", startTime) // Inequality 2 / Range
+        .whereLessThanOrEqualTo("timestamp", endTime)
+        .get()
+        .addOnSuccessListener { documents ->
+            if (documents.isEmpty) {
+                onResult("Query succeeded, but no documents matched.")
+                return@addOnSuccessListener
+            }
+
+            val sb = StringBuilder("Success! Found Anomalies:\n\n")
+            for (doc in documents) {
+                val sensor = doc.getString("sensorId")
+                val temp = doc.getDouble("temp")
+                val time = doc.getLong("timestamp")
+                sb.append("Sensor: $sensor\nTemp: $temp\nTime: $time\n-------------------\n")
+            }
+            onResult(sb.toString())
+        }
+        .addOnFailureListener { exception ->
+            // This is exactly what we WANT to happen for the presentation!
+            val errorMessage = "QUERY FAILED! (As expected)\n\n" +
+                    "Error: ${exception.message}\n\n" +
+                    "Look closely at the error message above. Firestore is telling you it needs a Composite Index, and it even provides a direct URL to build it."
+            onResult(errorMessage)
+        }
 }
