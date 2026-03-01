@@ -110,6 +110,7 @@ fun QueryShowcaseScreen() {
 
 // --- QUERY FUNCTIONS ---
 
+// Function for Example 1 (RTDB Viewer Lookup)
 fun runViewerQuery(onResult: (String) -> Unit) {
     val db = FirebaseDatabase.getInstance().getReference("bySensor/temp1/logs")
     db.orderByChild("timestamp").startAt(1708941000000.0).endAt(1708946000000.0)
@@ -126,6 +127,7 @@ fun runViewerQuery(onResult: (String) -> Unit) {
         })
 }
 
+// Function for Example 2 (RTDB Admin Timeline)
 fun runAdminTimelineQuery(onResult: (String) -> Unit) {
     val db = FirebaseDatabase.getInstance().getReference("byTime/temperature")
     db.orderByKey().startAt("1708941000000").endAt("1708946000000")
@@ -145,6 +147,7 @@ fun runAdminTimelineQuery(onResult: (String) -> Unit) {
         })
 }
 
+// Function for Example 3 (Firestore Technician Query & Composite Index)
 fun runTechnicianQuery(onResult: (String) -> Unit) {
     val db = FirebaseFirestore.getInstance()
     val startTime = 1708941600000L
