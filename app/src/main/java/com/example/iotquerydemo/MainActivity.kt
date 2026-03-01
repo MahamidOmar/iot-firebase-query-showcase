@@ -66,16 +66,30 @@ fun QueryShowcaseScreen() {
         Spacer(modifier = Modifier.height(16.dp))
 
         // --- EXAMPLE 3 ---
-        Text("Firestore 3: Technician Query (Fixed)", style = MaterialTheme.typography.titleMedium)
-        Text("Filters: siteId=S1, category=temperature, temp>=80, + timestamp range", style = MaterialTheme.typography.bodySmall)
-        Text("Solution: Composite Index created in Firebase Console", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+        Text("Firestore 3: Technician Query", style = MaterialTheme.typography.titleMedium)
+        Text("Solution: Composite Index created", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
         Spacer(modifier = Modifier.height(8.dp))
-
         Button(onClick = {
             resultText = "Running complex Firestore query..."
             runTechnicianQuery { resultText = it }
+        }) { Text("Run Example 3") }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Divider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- EXAMPLE 4 ---
+        Text("Firestore 4: Admin Rollups", style = MaterialTheme.typography.titleMedium)
+        Text("Path: hourly_stats", style = MaterialTheme.typography.bodySmall)
+        Text("Filters: hourKey between 2026022814 and 2026022816", style = MaterialTheme.typography.bodySmall)
+        Text("Why: Bypasses the lack of a GROUP BY function", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(onClick = {
+            resultText = "Fetching Dashboard Chart Data..."
+            runAdminRollupQuery { resultText = it }
         }) {
-            Text("Run Example 3 (Solution)")
+            Text("Run Example 4 (The Workaround)")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -131,41 +145,59 @@ fun runAdminTimelineQuery(onResult: (String) -> Unit) {
         })
 }
 
-// Function for Example 3 (Technician Composite Index Limitation)
 fun runTechnicianQuery(onResult: (String) -> Unit) {
     val db = FirebaseFirestore.getInstance()
-
-    // Time range mapping to our dummy documents
     val startTime = 1708941600000L
     val endTime = 1708943000000L
 
     db.collection("sensor_readings")
         .whereEqualTo("siteId", "S1")
         .whereEqualTo("category", "temperature")
-        .whereGreaterThanOrEqualTo("temp", 80.0) // Inequality 1
-        .whereGreaterThanOrEqualTo("timestamp", startTime) // Inequality 2 / Range
+        .whereGreaterThanOrEqualTo("temp", 80.0)
+        .whereGreaterThanOrEqualTo("timestamp", startTime)
         .whereLessThanOrEqualTo("timestamp", endTime)
         .get()
         .addOnSuccessListener { documents ->
+            if (documents.isEmpty) return@addOnSuccessListener onResult("Query succeeded, but no documents matched.")
+            val sb = StringBuilder("Success! Found Anomalies:\n\n")
+            for (doc in documents) {
+                sb.append("Sensor: ${doc.getString("sensorId")}\nTemp: ${doc.getDouble("temp")}\nTime: ${doc.getLong("timestamp")}\n-------------------\n")
+            }
+            onResult(sb.toString())
+        }
+        .addOnFailureListener { exception -> onResult("Error: ${exception.message}") }
+}
+
+// Function for Example 4 (Admin Dashboard Rollups)
+fun runAdminRollupQuery(onResult: (String) -> Unit) {
+    val db = FirebaseFirestore.getInstance()
+
+    // We only use the hourKey for the range query to avoid needing another complex index
+    db.collection("hourly_stats")
+        .whereGreaterThanOrEqualTo("hourKey", "2026022814")
+        .whereLessThanOrEqualTo("hourKey", "2026022816")
+        .orderBy("hourKey")
+        .get()
+        .addOnSuccessListener { documents ->
             if (documents.isEmpty) {
-                onResult("Query succeeded, but no documents matched.")
+                onResult("No hourly stats found.")
                 return@addOnSuccessListener
             }
 
-            val sb = StringBuilder("Success! Found Anomalies:\n\n")
+            val sb = StringBuilder("Success! Admin Dashboard Chart Data:\n\n")
             for (doc in documents) {
-                val sensor = doc.getString("sensorId")
-                val temp = doc.getDouble("temp")
-                val time = doc.getLong("timestamp")
-                sb.append("Sensor: $sensor\nTemp: $temp\nTime: $time\n-------------------\n")
+                val hour = doc.getString("hourKey")
+                val avg = doc.getDouble("avg")
+                val count = doc.getDouble("count")
+
+                sb.append("Hour Block: $hour\n")
+                sb.append("  -> Avg Temp: $avg\n")
+                sb.append("  -> Total Readings: ${count?.toInt()}\n")
+                sb.append("-------------------\n")
             }
             onResult(sb.toString())
         }
         .addOnFailureListener { exception ->
-            // This is exactly what we WANT to happen for the presentation!
-            val errorMessage = "QUERY FAILED! (As expected)\n\n" +
-                    "Error: ${exception.message}\n\n" +
-                    "Look closely at the error message above. Firestore is telling you it needs a Composite Index, and it even provides a direct URL to build it."
-            onResult(errorMessage)
+            onResult("Query Failed: ${exception.message}")
         }
 }
